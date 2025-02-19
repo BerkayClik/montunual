@@ -174,6 +174,22 @@ export default function Home() {
             </Button>
           )}
         </CardFooter>
+        {/* Static explanation of the coat decision algorithm */}
+        <div className="text-center mt-4">
+          <h3 className="text-lg font-semibold">How the Decision is Made:</h3>
+          <p>
+            The decision to take a coat is based on the following criteria:
+          </p>
+          <ul className="list-disc list-inside">
+            <li>If the perceived temperature is below 15°C, it is considered cold.</li>
+            <li>If it is raining, you should take a coat.</li>
+            <li>If the wind speed exceeds {HIGH_WIND_THRESHOLD} km/h, it is considered windy.</li>
+            <li>If it is night time (before 6 AM or after 6 PM), and the perceived temperature is below 18°C, you should take a coat.</li>
+          </ul>
+          <p>
+            If any of these conditions are true, it is recommended to take your coat.
+          </p>
+        </div>
       </Card>
     </div>
   )
