@@ -71,13 +71,29 @@ async function getWeatherForecast(lat: number, lon: number): Promise<WeatherData
     const windSpeed = current.windspeed_10m ?? 0
     const humidity = current.relativehumidity_2m ?? 0
 
+    // Calculate perceived temperature
+    let perceivedTemp = Math.round(temperature) // Default to actual temperature
+
+    // Calculate wind chill if temperature is below 10°C
+    if (temperature < 10) {
+      perceivedTemp = Math.round(
+        13.12 + 0.6215 * temperature - 11.37 * Math.pow(windSpeed, 0.16) + 0.3965 * temperature * Math.pow(windSpeed, 0.16)
+      )
+    }
+
+    // Calculate heat index if temperature is above 27°C
+    if (temperature > 27) {
+      const e = (humidity / 100) * 6.11 * Math.pow(10, (7.5 * temperature) / (237.7 + temperature))
+      perceivedTemp = Math.round(temperature + 0.5555 * (e - 10))
+    }
+
     return {
       temperature: Math.round(temperature),
       isRainy: precipitation > 0,
       windSpeed: Math.round(windSpeed),
       humidity: Math.round(humidity),
       hour: new Date().getHours(),
-      perceivedTemp: Math.round(temperature) // Adjust this logic as needed
+      perceivedTemp: perceivedTemp // Use the calculated perceived temperature
     }
   } catch (error) {
     console.error('Weather API error:', error)
