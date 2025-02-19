@@ -23,17 +23,6 @@ interface WeatherData {
 interface LocationData {
   lat: number
   lon: number
-  name: string
-}
-
-// Add this interface for the geocoding API response
-interface GeocodingResult {
-  results?: Array<{
-    name: string
-    admin3?: string
-    admin1?: string
-    country?: string
-  }>
 }
 
 async function getWeatherForecast(lat: number, lon: number): Promise<WeatherData> {
@@ -51,60 +40,44 @@ async function getWeatherForecast(lat: number, lon: number): Promise<WeatherData
       ]
     }
 
-    const responses = await fetchWeatherApi(url, params)
-    const response = responses[0]
-    const current = response.current()
+    // Log the parameters being sent to the API
+    console.log('Fetching weather data with parameters:', params)
 
+    // Make the API call
+    const response = await fetch(`${url}?latitude=${lat}&longitude=${lon}&current=${params.current.join(',')}`)
+
+    // Check if the response is okay
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`)
+    }
+
+    // Parse the JSON response
+    const data = await response.json()
+
+    // Log the entire response data for debugging
+    console.log('API Response:', data)
+
+    // Access the current weather data
+    const current = data.current
+
+    // Ensure the current data is valid
     if (!current) {
-      throw new Error("No weather data available")
+      throw new Error("Invalid weather data structure")
     }
 
-    // Safely extract weather data with null checks
-    const variables = current.variables()
-    if (!variables || variables.length < 4) {
-      throw new Error("Incomplete weather data")
-    }
-
-    // Extract base weather data with safe access
-    const temperature = variables[0]?.value() ?? 0
-    const precipitation = variables[1]?.value() ?? 0
-    const windSpeed = variables[2]?.value() ?? 0
-    const humidity = variables[3]?.value() ?? 0
-    
-    // Get current hour
-    const currentHour = new Date().getHours()
-
-    // Calculate perceived temperature
-    let perceivedTemp = temperature
-
-    // Wind chill adjustment (using simplified wind chill formula)
-    if (windSpeed > HIGH_WIND_THRESHOLD) {
-      perceivedTemp -= (windSpeed - HIGH_WIND_THRESHOLD) * 0.1
-    }
-
-    // Humidity adjustment
-    if (humidity > HIGH_HUMIDITY_THRESHOLD) {
-      if (temperature > 20) {
-        // Hot weather feels hotter with high humidity
-        perceivedTemp += (humidity - HIGH_HUMIDITY_THRESHOLD) * 0.1
-      } else {
-        // Cold weather feels colder with high humidity
-        perceivedTemp -= (humidity - HIGH_HUMIDITY_THRESHOLD) * 0.05
-      }
-    }
-
-    // Time of day adjustment
-    if (currentHour < MORNING_HOUR || currentHour > EVENING_HOUR) {
-      perceivedTemp -= 2 // It feels colder in the early morning and late evening
-    }
+    // Extract the weather variables
+    const temperature = current.temperature_2m ?? 0
+    const precipitation = current.precipitation ?? 0
+    const windSpeed = current.windspeed_10m ?? 0
+    const humidity = current.relativehumidity_2m ?? 0
 
     return {
       temperature: Math.round(temperature),
       isRainy: precipitation > 0,
       windSpeed: Math.round(windSpeed),
       humidity: Math.round(humidity),
-      hour: currentHour,
-      perceivedTemp: Math.round(perceivedTemp)
+      hour: new Date().getHours(),
+      perceivedTemp: Math.round(temperature) // Adjust this logic as needed
     }
   } catch (error) {
     console.error('Weather API error:', error)
@@ -112,67 +85,6 @@ async function getWeatherForecast(lat: number, lon: number): Promise<WeatherData
   }
 }
 
-async function getLocationName(lat: number, lon: number): Promise<string> {
-  try {
-    // Add timeout to fetch
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
-
-    const response = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en`,
-      { 
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/json'
-        }
-      }
-    )
-    
-    clearTimeout(timeoutId)
-
-    if (!response.ok) {
-      throw new Error(`Geocoding API failed with status: ${response.status}`)
-    }
-
-    const data = await response.json() as GeocodingResult
-    
-    if (data.results?.[0]) {
-      const location = data.results[0]
-      // Try different combinations of location data
-      const locationParts = []
-
-      if (location.name) locationParts.push(location.name)
-      if (location.admin3) locationParts.push(location.admin3)
-      if (location.admin1) locationParts.push(location.admin1)
-      if (locationParts.length === 0 && location.country) locationParts.push(location.country)
-
-      if (locationParts.length > 0) {
-        // Return up to two most specific parts
-        return locationParts.slice(0, 2).join(', ')
-      }
-    }
-    
-    // More user-friendly coordinate format
-    const latDir = lat >= 0 ? 'N' : 'S'
-    const lonDir = lon >= 0 ? 'E' : 'W'
-    return `${Math.abs(lat).toFixed(2)}°${latDir}, ${Math.abs(lon).toFixed(2)}°${lonDir}`
-
-  } catch (error) {
-    console.error('Geocoding error:', error)
-    
-    // Handle specific error types
-    if (error instanceof TypeError) {
-      console.error('Network error when fetching location data')
-    } else if (error.name === 'AbortError') {
-      console.error('Geocoding request timed out')
-    }
-
-    // Return formatted coordinates as fallback
-    const latDir = lat >= 0 ? 'N' : 'S'
-    const lonDir = lon >= 0 ? 'E' : 'W'
-    return `${Math.abs(lat).toFixed(2)}°${latDir}, ${Math.abs(lon).toFixed(2)}°${lonDir}`
-  }
-}
 
 export default function Home() {
   const [location, setLocation] = useState<LocationData | null>(null)
@@ -188,12 +100,7 @@ export default function Home() {
         async (position) => {
           const lat = position.coords.latitude
           const lon = position.coords.longitude
-          const name = await getLocationName(lat, lon)
-          setLocation({
-            lat,
-            lon,
-            name
-          })
+          setLocation({ lat, lon })
         },
         (error) => {
           setError("Unable to retrieve your location")
@@ -249,9 +156,6 @@ export default function Home() {
           {loading && <p>Loading...</p>}
           {weather && (
             <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-4">
-                Weather in {location?.name}
-              </p>
               <p className="text-2xl font-bold mb-2">
                 {shouldTakeCoat() ? "Yes, take your coat!" : "No, you don't need a coat!"}
               </p>
@@ -274,4 +178,3 @@ export default function Home() {
     </div>
   )
 }
-
